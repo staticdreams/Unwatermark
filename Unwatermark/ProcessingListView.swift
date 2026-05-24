@@ -3,57 +3,39 @@ import AppKit
 
 struct ProcessingListView: View {
     @Environment(AppState.self) private var app
+    /// When non-nil, renders this list instead of `app.jobs`.
+    var jobs: [ImageJob]? = nil
+    /// When true, rows highlight the currently-selected job and tap to select.
+    var selectable: Bool = false
+
+    private var displayJobs: [ImageJob] { jobs ?? app.jobs }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("\(app.jobs.count) image\(app.jobs.count == 1 ? "" : "s")")
-                    .font(.callout.weight(.medium))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                if hasFinishedJobs {
-                    Button {
-                        withAnimation(Theme.smoothEase) {
-                            app.clearFinished()
-                        }
-                    } label: {
-                        Text("Clear finished")
-                            .font(.caption)
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
+        ScrollView {
+            LazyVStack(spacing: 8) {
+                ForEach(displayJobs) { job in
+                    JobRow(
+                        job: job,
+                        isSelected: selectable && app.effectiveSelectedJobID == job.id,
+                        onTap: selectable ? { app.select(job) } : nil
+                    )
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .top).combined(with: .opacity),
+                        removal: .opacity
+                    ))
                 }
             }
+            .padding(.vertical, 2)
             .padding(.horizontal, 4)
-
-            ScrollView {
-                LazyVStack(spacing: 8) {
-                    ForEach(app.jobs) { job in
-                        JobRow(job: job)
-                            .transition(.asymmetric(
-                                insertion: .move(edge: .top).combined(with: .opacity),
-                                removal: .opacity
-                            ))
-                    }
-                }
-                .padding(.vertical, 2)
-            }
-            .frame(maxHeight: 220)
         }
-        .animation(Theme.smoothEase, value: app.jobs.count)
-    }
-
-    private var hasFinishedJobs: Bool {
-        app.jobs.contains { job in
-            if case .done = job.status { return true }
-            if case .failed = job.status { return true }
-            return false
-        }
+        .animation(Theme.smoothEase, value: displayJobs.count)
     }
 }
 
 private struct JobRow: View {
     let job: ImageJob
+    var isSelected: Bool = false
+    var onTap: (() -> Void)? = nil
     @State private var thumb: NSImage?
     @State private var shake: Bool = false
 
@@ -73,12 +55,14 @@ private struct JobRow: View {
         .padding(10)
         .background(
             RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous)
-                .fill(Color.secondary.opacity(0.06))
+                .fill(backgroundFill)
         )
         .overlay(
             RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous)
-                .strokeBorder(borderColor, lineWidth: 1)
+                .strokeBorder(borderColor, lineWidth: isSelected ? 1.5 : 1)
         )
+        .contentShape(Rectangle())
+        .onTapGesture { onTap?() }
         .offset(x: shake ? -3 : 0)
         .onChange(of: job.status) { _, newStatus in
             if case .failed = newStatus {
@@ -88,9 +72,15 @@ private struct JobRow: View {
         .task(id: job.source) {
             await loadThumb()
         }
+        .animation(Theme.smoothEase, value: isSelected)
+    }
+
+    private var backgroundFill: Color {
+        isSelected ? Color.accentColor.opacity(0.14) : Color.secondary.opacity(0.06)
     }
 
     private var borderColor: Color {
+        if isSelected { return Color.accentColor.opacity(0.65) }
         switch job.status {
         case .done: return Color.green.opacity(0.5)
         case .failed: return Color.red.opacity(0.5)

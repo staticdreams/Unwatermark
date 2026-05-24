@@ -20,9 +20,26 @@ final class AppState {
         didSet { UserDefaults.standard.set(mode.rawValue, forKey: Self.modeKey) }
     }
     var jobs: [ImageJob] = []
+    /// User-selected history entry to preview. When nil, the preview follows
+    /// the most recently added job.
+    var selectedJobID: UUID?
     var hasWarnedAllMode: Bool {
         didSet { UserDefaults.standard.set(hasWarnedAllMode, forKey: Self.warnedAllModeKey) }
     }
+
+    /// The job currently shown in the preview area. Resolves the user's
+    /// explicit selection if still present, otherwise falls back to the last
+    /// added job. Returns nil only when there are no jobs.
+    var selectedJob: ImageJob? {
+        if let id = selectedJobID, let job = jobs.first(where: { $0.id == id }) {
+            return job
+        }
+        return jobs.last
+    }
+
+    /// ID used by the history list to render the selection highlight. Includes
+    /// the implicit fallback so the "latest" row visibly lights up.
+    var effectiveSelectedJobID: UUID? { selectedJob?.id }
 
     private(set) var service: WatermarkService?
 
@@ -80,8 +97,14 @@ final class AppState {
 
     func enqueue(_ urls: [URL]) {
         let new = urls.map(ImageJob.init(source:))
+        // New drop → follow the latest until the user picks something else.
+        selectedJobID = nil
         jobs.append(contentsOf: new)
         service?.enqueue(new)
+    }
+
+    func select(_ job: ImageJob) {
+        selectedJobID = job.id
     }
 
     func clearFinished() {
@@ -90,5 +113,6 @@ final class AppState {
             if case .failed = job.status { return true }
             return false
         }
+        selectedJobID = nil
     }
 }

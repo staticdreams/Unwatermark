@@ -9,14 +9,19 @@ struct MainView: View {
 
         VStack(spacing: 16) {
             header
-            DropZoneView()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            if !app.jobs.isEmpty {
-                ProcessingListView()
+            HStack(spacing: 16) {
+                DropZoneView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                HistorySidebar()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            .frame(height: 220)
+            PreviewArea()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .padding(20)
         .background(.background)
+        .animation(Theme.smoothEase, value: app.jobs.count)
         .sheet(isPresented: $showAllModeSheet) {
             AllModeWarningSheet(
                 isPresented: $showAllModeSheet,
@@ -64,6 +69,129 @@ struct MainView: View {
         .pickerStyle(.segmented)
         .frame(width: 180)
         .help(app.mode.summary)
+    }
+}
+
+/// History list rendered next to the drop zone. Selecting a row puts that job
+/// in the preview area below; newly enqueued jobs auto-follow as the preview.
+private struct HistorySidebar: View {
+    @Environment(AppState.self) private var app
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            header
+            if app.jobs.isEmpty {
+                emptyState
+            } else {
+                ProcessingListView(jobs: app.jobs.reversed(), selectable: true)
+            }
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous)
+                .fill(Color.secondary.opacity(0.04))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous)
+                .strokeBorder(Color.secondary.opacity(0.12), lineWidth: 1)
+        )
+    }
+
+    private var header: some View {
+        HStack(spacing: 6) {
+            Text("History")
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(.secondary)
+            if !app.jobs.isEmpty {
+                Text("·").foregroundStyle(.tertiary)
+                Text("\(app.jobs.count)")
+                    .font(.callout)
+                    .foregroundStyle(.tertiary)
+            }
+            if inFlightCount > 0 {
+                ProgressView()
+                    .controlSize(.small)
+                    .padding(.leading, 4)
+            }
+            Spacer(minLength: 8)
+            if hasFinished {
+                Button {
+                    withAnimation(Theme.smoothEase) { app.clearFinished() }
+                } label: {
+                    Text("Clear finished")
+                        .font(.caption)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 4)
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "photo.stack")
+                .font(.system(size: 28))
+                .foregroundStyle(.tertiary)
+            Text("No images yet")
+                .font(.callout)
+                .foregroundStyle(.tertiary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var inFlightCount: Int {
+        app.jobs.reduce(0) { acc, job in
+            switch job.status {
+            case .pending, .processing: return acc + 1
+            default: return acc
+            }
+        }
+    }
+
+    private var hasFinished: Bool {
+        app.jobs.contains { job in
+            if case .done = job.status { return true }
+            if case .failed = job.status { return true }
+            return false
+        }
+    }
+}
+
+/// Always-present preview area below the drop zone + history. Shows the
+/// currently-selected job's before/after compare, or an empty placeholder.
+private struct PreviewArea: View {
+    @Environment(AppState.self) private var app
+
+    var body: some View {
+        if let job = app.selectedJob {
+            SingleJobView(job: job)
+                .id(job.id) // remount when the user picks a different job
+                .transition(.opacity)
+        } else {
+            emptyState
+                .transition(.opacity)
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "rectangle.on.rectangle.slash")
+                .font(.system(size: 28))
+                .foregroundStyle(.tertiary)
+            Text("Drop an image to preview the before/after here")
+                .font(.callout)
+                .foregroundStyle(.tertiary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous)
+                .fill(Color.secondary.opacity(0.04))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous)
+                .strokeBorder(Color.secondary.opacity(0.10), lineWidth: 1)
+        )
     }
 }
 
