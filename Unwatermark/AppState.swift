@@ -23,6 +23,9 @@ final class AppState {
     /// User-selected history entry to preview. When nil, the preview follows
     /// the most recently added job.
     var selectedJobID: UUID?
+    /// URLs received from Dock drops or "Open With" before the CLI was ready.
+    /// Drained inside `probe()` / `reprobe()` once `phase` becomes `.ready`.
+    private var pendingExternalURLs: [URL] = []
     var hasWarnedAllMode: Bool {
         didSet { UserDefaults.standard.set(hasWarnedAllMode, forKey: Self.warnedAllModeKey) }
     }
@@ -62,6 +65,7 @@ final class AppState {
             if FileManager.default.isExecutableFile(atPath: url.path) {
                 adoptCLI(at: url)
                 phase = .ready
+                drainPendingExternalURLs()
                 return
             }
         }
@@ -69,6 +73,7 @@ final class AppState {
         if let found = CLIProbe.findExecutable(named: "remove-ai-watermarks") {
             adoptCLI(at: found)
             phase = .ready
+            drainPendingExternalURLs()
         } else {
             phase = .needsSetup
         }
@@ -78,6 +83,7 @@ final class AppState {
         if let found = CLIProbe.findExecutable(named: "remove-ai-watermarks") {
             adoptCLI(at: found)
             phase = .ready
+            drainPendingExternalURLs()
         }
     }
 
@@ -101,6 +107,33 @@ final class AppState {
         selectedJobID = nil
         jobs.append(contentsOf: new)
         service?.enqueue(new)
+    }
+
+    /// Entry point for Dock drops and "Open With…" — filters to images we
+    /// support, then enqueues immediately or buffers until the CLI is ready.
+    func handleExternalOpen(urls: [URL]) {
+        let images = urls.filter(Self.isAcceptableImage)
+        guard !images.isEmpty else { return }
+        if phase == .ready {
+            enqueue(images)
+        } else {
+            pendingExternalURLs.append(contentsOf: images)
+        }
+    }
+
+    private func drainPendingExternalURLs() {
+        guard !pendingExternalURLs.isEmpty else { return }
+        let urls = pendingExternalURLs
+        pendingExternalURLs.removeAll()
+        enqueue(urls)
+    }
+
+    private static let imageExtensions: Set<String> = [
+        "png", "jpg", "jpeg", "webp", "tif", "tiff", "heic", "bmp"
+    ]
+
+    private static func isAcceptableImage(_ url: URL) -> Bool {
+        imageExtensions.contains(url.pathExtension.lowercased())
     }
 
     func select(_ job: ImageJob) {
