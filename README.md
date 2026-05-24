@@ -4,7 +4,7 @@ A native macOS app for removing AI watermarks from images — drag, drop, done.
 
 Unwatermark is a thin, friendly **SwiftUI shell** around the open-source [`remove-ai-watermarks`](https://github.com/wiltodelta/remove-ai-watermarks) Python CLI. It does not reimplement watermark removal — it bundles a one-click installer, a polished drag-and-drop UI, and a job queue around the upstream tool so you never have to open a terminal.
 
-![Unwatermark](icon.png)
+![Unwatermark](screenshot.jpg)
 
 ---
 
@@ -12,18 +12,26 @@ Unwatermark is a thin, friendly **SwiftUI shell** around the open-source [`remov
 
 Drop one image or a hundred onto the window. Unwatermark hands each file to `remove-ai-watermarks` and writes the cleaned copy alongside the original as `<name>-unwatermarked.<ext>`. The originals are never modified.
 
-Two processing modes, chosen from the segmented control in the header:
+### The interface
+
+- **Drop zone (top-left).** Drop any number of PNG / JPEG / WebP / HEIC / TIFF files (or whole folders) here. Animated gradient ring, with a scale bump on hover.
+- **History (top-right).** Every image you've dropped this session lives here, newest first, with a thumbnail and live status (`Queued → Cleaning… → Done / Failed`). Clicking a row makes it the current preview. The header shows a count and a small spinner whenever anything is still in flight; a `Clear finished` button appears once there are completed rows.
+- **Preview (full-width, below).** Shows the currently selected job. While it's processing you get a placeholder with a progress bar; on completion it becomes a **draggable before/after compare slider** — drag anywhere over the image to wipe between the watermarked original (left) and the cleaned result (right). Newly added images auto-become the preview; pick any row in history to compare older results.
+- **Mode picker (header).** Segmented `Visible` / `All` switch that affects every subsequent job. Picking `All` for the first time pops a one-time confirmation explaining the ~2 GB model download.
+
+### Processing modes
 
 | Mode | What it removes | Speed | Notes |
 |------|-----------------|-------|-------|
 | **Visible** | The Gemini / Nano Banana sparkle overlay + AI metadata (EXIF, C2PA, XMP) | Fast, CPU-only | The default. Works offline, deterministic. |
 | **All** | Visible sparkle + **invisible** watermarks (SynthID, StableSignature, TreeRing, DWT) + metadata | Slow, GPU-accelerated on Apple Silicon (`--device mps`) | Uses diffusion-based regeneration. First run downloads a ~2 GB SDXL model. Shows a one-time warning. |
 
-Beyond that, the app:
+### Other niceties
 
 - **Auto-discovers** the CLI in `~/.local/bin`, `~/.local/share/uv/tools/…/bin`, `/opt/homebrew/bin`, and standard system paths.
 - **Installs the CLI for you** on first launch via a guided wizard (`uv` recommended, `pipx` as alternative) with live install logs.
-- **Queues jobs serially** with per-image status (queued → processing → done / failed) and reveal-in-Finder.
+- **Queues jobs serially** with per-image status and a `Reveal in Finder` shortcut.
+- **Handles missing files gracefully.** If you delete or move the original or the cleaned image after processing, picking that history row shows a friendly "preview no longer available" card instead of crashing or silently rendering blank.
 - **Remembers** the CLI path, your last-used mode, and your acknowledgement of the diffusion-mode warning across launches.
 
 ---
